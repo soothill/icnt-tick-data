@@ -15,6 +15,8 @@ type Backoff struct {
 	max     time.Duration
 }
 
+const tradeBufferSize = 1000
+
 func NewBackoff(base, max time.Duration) *Backoff {
 	return &Backoff{base: base, current: base, max: max}
 }
@@ -60,14 +62,31 @@ func Run(ctx context.Context, config Config) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	go StreamTrades(ctx, config, func(trades []Tick) {
-		inserted, err := storage.InsertTicks(trades)
-		if err != nil {
-			log.Printf("failed to store trades: %v", err)
-			return
+	tradeCh := make(chan []Tick, tradeBufferSize)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case trades := <-tradeCh:
+				inserted, err := storage.InsertTicks(trades)
+				if err != nil {
+					log.Printf("failed to store trades: %v", err)
+					continue
+				}
+				if inserted > 0 {
+					log.Printf("stored %d trades", inserted)
+				}
+			}
 		}
-		if inserted > 0 {
-			log.Printf("stored %d trades", inserted)
+	}()
+
+	go StreamTrades(ctx, config, func(trades []Tick) {
+		select {
+		case tradeCh <- trades:
+		case <-ctx.Done():
+		default:
+			log.Printf("dropping %d trades: channel full (%d/%d)", len(trades), len(tradeCh), cap(tradeCh))
 		}
 	}, func() {
 		select {
@@ -129,20 +148,38 @@ func backfillOnce(ctx context.Context, storage *Storage, rest *KrakenRestClient)
 	if err != nil {
 		return err
 	}
-	trades, last, err := rest.FetchTradesSince(ctx, since)
-	if err != nil {
-		return err
-	}
-	if len(trades) > 0 {
-		if _, err := storage.InsertTicks(trades); err != nil {
+	current := since
+	finalState := since
+	const maxPages = 10
+	totalInserted := 0
+	for page := 0; page < maxPages; page++ {
+		previous := current
+		trades, last, err := rest.FetchTradesSince(ctx, current)
+		if err != nil {
 			return err
 		}
-		log.Printf("backfilled %d trades", len(trades))
+		if len(trades) > 0 {
+			inserted, err := storage.InsertTicks(trades)
+			if err != nil {
+				return err
+			}
+			totalInserted += inserted
+		}
+		if last != "" {
+			finalState = last
+			current = last
+		}
+		if last == "" || last == previous || len(trades) == 0 {
+			break
+		}
 	}
-	if last != "" {
-		if err := storage.SetState("kraken_last", last); err != nil {
+	if finalState != "" {
+		if err := storage.SetState("kraken_last", finalState); err != nil {
 			return err
 		}
+	}
+	if totalInserted > 0 {
+		log.Printf("backfilled %d trades", totalInserted)
 	}
 	return nil
 }

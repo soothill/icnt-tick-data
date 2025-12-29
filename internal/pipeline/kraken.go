@@ -188,6 +188,19 @@ func streamOnce(ctx context.Context, config Config, onTrades func([]Tick)) error
 		if err := json.Unmarshal(message, &payload); err != nil {
 			continue
 		}
+		if status, ok := payload.(map[string]interface{}); ok {
+			event, _ := status["event"].(string)
+			switch event {
+			case "heartbeat":
+				continue
+			case "subscriptionStatus":
+				if statusValue, _ := status["status"].(string); statusValue != "subscribed" {
+					return fmt.Errorf("subscription failed: %s", strings.TrimSpace(string(message)))
+				}
+				continue
+			}
+			continue
+		}
 		arr, ok := payload.([]interface{})
 		if !ok || len(arr) < 4 {
 			continue
@@ -327,7 +340,9 @@ func parseTimestampNS(value interface{}) (int64, error) {
 }
 
 func hashTradeID(tsNS int64, price, volume float64, side, orderType, misc string) string {
-	payload := fmt.Sprintf("%d-%f-%f-%s-%s-%s", tsNS, price, volume, side, orderType, misc)
+	priceStr := strconv.FormatFloat(price, 'g', -1, 64)
+	volumeStr := strconv.FormatFloat(volume, 'g', -1, 64)
+	payload := fmt.Sprintf("%d-%s-%s-%s-%s-%s", tsNS, priceStr, volumeStr, side, orderType, misc)
 	digest := sha1.Sum([]byte(payload))
 	return "rest-" + hex.EncodeToString(digest[:10])
 }

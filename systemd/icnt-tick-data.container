@@ -1,0 +1,18 @@
+# Copyright (c) 2025 Darren Soothill (darren [at] soothill [dot] com)
+
+[Unit]
+Description=ICNT tick data pipeline (Kraken to InfluxDB)
+Wants=container-influxdb.service
+After=container-influxdb.service
+
+[Container]
+Image=localhost/icnt-tick-data:latest
+ContainerName=icnt-tick-data
+UserNS=keep-id
+User=%U
+EnvironmentFile=%h/.config/icnt-tick-data/icnt-tick-data.env
+Volume=%h/.local/share/icnt-tick-data:/data:Z
+Network=icnt-tick-data
+
+[Service]
+Restart=always

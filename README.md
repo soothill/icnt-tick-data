@@ -1,0 +1,86 @@
+<!-- Copyright (c) 2025 Darren Soothill (darren [at] soothill [dot] com) -->
+
+# ICNT Tick Data Pipeline
+
+This repository collects ICNT/USD tick data from Kraken Pro’s public trade feed, caches it locally, aggregates minute bars, and reliably ships both raw ticks and minute summaries to InfluxDB. It is designed for openSUSE MicroOS using Podman + systemd (Quadlet).
+
+## How It Works
+
+- **Ingest**: WebSocket stream from Kraken for real-time trades.
+- **Backfill**: REST polling to fill gaps after disconnects.
+- **Cache**: SQLite database on local disk to avoid data loss.
+- **Aggregate**: Minute bars built from cached ticks (open/high/low/close/volume).
+- **Flush**: Batched writes to InfluxDB with retry/backoff if the DB is down.
+
+## Project Layout
+
+- `cmd/pipeline/` - Go entrypoint.
+- `internal/pipeline/` - Kraken clients, cache, aggregation, Influx writer.
+- `systemd/` - Quadlet unit files for Podman.
+- `config/` - Example env files (templates only).
+
+## Quick Start (MicroOS + Podman)
+
+1) Build the image:
+
+```sh
+make build
+```
+
+2) Install units and default configs:
+
+```sh
+make install
+```
+
+3) Edit real config files (outside repo):
+
+- `~/.config/icnt-tick-data/icnt-tick-data.env`
+- `~/.config/icnt-tick-data/influxdb.env`
+
+4) Enable and start containers:
+
+```sh
+make enable
+make start
+```
+
+5) Check status/logs:
+
+```sh
+make status
+make logs-tail
+```
+
+6) Run tests in Podman:
+
+```sh
+make test
+```
+
+## Configuration
+
+Pipeline env (`icnt-tick-data.env`):
+
+- `KRAKEN_PAIR` (default `ICNT/USD`)
+- `KRAKEN_REST_PAIR` (default `ICNTUSD`)
+- `CACHE_DB_PATH` (default `/data/ticks.sqlite` in container)
+- `INFLUX_URL`, `INFLUX_ORG`, `INFLUX_BUCKET`, `INFLUX_TOKEN`
+- `FLUSH_INTERVAL_SEC`, `BACKFILL_INTERVAL_SEC`, `AGGREGATE_INTERVAL_SEC`, `BATCH_SIZE`
+
+Influx setup env (`influxdb.env`):
+
+- `DOCKER_INFLUXDB_INIT_*` values for initial org/bucket/token setup
+
+## Security Notes
+
+- Do not commit real credentials. Only `config/*.env.example` belongs in git.
+- Real configs live under `~/.config/icnt-tick-data/` and are ignored.
+
+## Local (Non-Container) Run
+
+```sh
+go run ./cmd/pipeline
+```
+
+Export the same env variables in your shell or a local `.env` file.

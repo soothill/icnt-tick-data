@@ -1,0 +1,11 @@
+# Copyright (c) 2025 Darren Soothill (darren [at] soothill [dot] com)
+
+/cache/
+__pycache__/
+*.pyc
+.env
+bin/
+*.sqlite
+*.db
+config/*.env
+config/*.env.local

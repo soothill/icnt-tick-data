@@ -1,0 +1,17 @@
+# Copyright (c) 2025 Darren Soothill (darren [at] soothill [dot] com)
+
+[Unit]
+Description=InfluxDB (v2) for ICNT tick data
+
+[Container]
+Image=docker.io/library/influxdb:2.7
+ContainerName=influxdb
+UserNS=keep-id
+User=%U
+EnvironmentFile=%h/.config/icnt-tick-data/influxdb.env
+Volume=%h/.local/share/icnt-tick-data/influxdb:/var/lib/influxdb2:Z
+PublishPort=8086:8086
+Network=icnt-tick-data
+
+[Service]
+Restart=always

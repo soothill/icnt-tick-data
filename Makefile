@@ -6,8 +6,10 @@ SHELL := /bin/bash
 
 IMAGE_NAME ?= localhost/icnt-tick-data:latest
 TEST_IMAGE ?= docker.io/library/golang:1.21
+BIN ?= pipeline
+ENV_FILE ?= $(CONFIG_DIR)/icnt-tick-data.env
 
-.PHONY: help build install install-config install-units reload enable start stop restart status logs logs-tail test network clean
+.PHONY: help build build-local run install install-config install-units reload enable start stop restart status logs logs-tail test test-local fmt tidy network clean
 
 QUADLET_DIR := $(HOME)/.config/containers/systemd
 CONFIG_DIR := $(HOME)/.config/icnt-tick-data
@@ -19,6 +21,15 @@ help: ## Show available make targets and their descriptions
 
 build: ## Build the Podman image locally
 	podman build -t $(IMAGE_NAME) -f Containerfile .
+
+build-local: ## Build the pipeline binary locally (non-container)
+	go build -o $(BIN) ./cmd/pipeline
+
+run: ## Run the pipeline locally (loads ENV_FILE if present)
+	if [ -f $(ENV_FILE) ]; then \
+		set -a; source $(ENV_FILE); set +a; \
+	fi; \
+	go run ./cmd/pipeline
 
 network: ## Ensure the icnt-tick-data Podman network exists
 	podman network inspect icnt-tick-data >/dev/null 2>&1 || podman network create icnt-tick-data
@@ -70,6 +81,15 @@ logs-tail: ## Tail logs for both services
 
 test: ## Run Go tests inside a Podman container
 	podman run --rm -v $(PWD):/src:Z -w /src $(TEST_IMAGE) go test ./...
+
+test-local: ## Run Go tests on the host
+	go test ./...
+
+fmt: ## Format Go code
+	gofmt -w cmd internal
+
+tidy: ## Sync module dependencies
+	go mod tidy
 
 clean: ## Remove the built image
 	podman image rm -f $(IMAGE_NAME)

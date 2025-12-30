@@ -17,6 +17,6 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if err := pipeline.Run(ctx, config); err != nil {
-		log.Printf("pipeline stopped: %v", err)
+		log.Fatalf("pipeline stopped: %v", err)
 	}
 }

@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -63,12 +65,18 @@ func NewInfluxWriter(config Config) (*InfluxWriter, error) {
 	if config.InfluxOrg == "" || config.InfluxBucket == "" || config.InfluxToken == "" {
 		return nil, fmt.Errorf("INFLUX_ORG, INFLUX_BUCKET, and INFLUX_TOKEN are required")
 	}
-	url := fmt.Sprintf(
-		"%s/api/v2/write?org=%s&bucket=%s&precision=ns",
-		strings.TrimRight(config.InfluxURL, "/"),
-		config.InfluxOrg,
-		config.InfluxBucket,
-	)
+	baseURL := strings.TrimRight(config.InfluxURL, "/")
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/api/v2/write"
+	query := parsed.Query()
+	query.Set("org", config.InfluxOrg)
+	query.Set("bucket", config.InfluxBucket)
+	query.Set("precision", "ns")
+	parsed.RawQuery = query.Encode()
+	url := parsed.String()
 	client := &http.Client{Timeout: config.InfluxTimeout}
 	return &InfluxWriter{config: config, client: client, url: url}, nil
 }
@@ -90,7 +98,8 @@ func (w *InfluxWriter) SendLines(ctx context.Context, lines []string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("influx write failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("influx write failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
 }

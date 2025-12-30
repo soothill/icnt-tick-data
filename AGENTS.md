@@ -17,7 +17,7 @@ If you choose a different structure, update this file so new contributors can or
 
 ## Build, Test, and Development Commands
 
-There are no build or test scripts defined yet. For local runs:
+Go toolchain is available locally. There are no build or test scripts defined yet. For local runs:
 
 - `go run ./cmd/pipeline` - start the ingest pipeline.
 - `go test ./...` - run all tests (once added).

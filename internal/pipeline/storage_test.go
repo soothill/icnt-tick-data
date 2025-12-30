@@ -123,6 +123,47 @@ func TestStorageLifecycle(t *testing.T) {
 		t.Fatalf("expected 0 unsent minute bars, got %d", len(bars))
 	}
 
+	// New tick arrives for an already aggregated minute; bar should be re-aggregated and marked unsent.
+	extraTick := Tick{
+		TradeID:   "t3",
+		TSNS:      minuteStart + 10,
+		Price:     1.3,
+		Volume:    1.1,
+		Side:      "b",
+		OrderType: "l",
+		Misc:      "",
+		Source:    "ws",
+	}
+	if _, err := storage.InsertTicks([]Tick{extraTick}); err != nil {
+		t.Fatalf("failed to insert extra tick: %v", err)
+	}
+	missing, err = storage.ListMissingMinutes(minuteStart+MinuteNS, 10)
+	if err != nil {
+		t.Fatalf("failed to list missing minutes after new tick: %v", err)
+	}
+	if len(missing) != 1 || missing[0] != minuteStart {
+		t.Fatalf("expected missing minute %d after new tick, got %v", minuteStart, missing)
+	}
+	updatedBar := MinuteBar{
+		MinuteTS:   minuteStart,
+		Open:       1.1,
+		High:       1.3,
+		Low:        1.1,
+		Close:      1.3,
+		Volume:     6.6,
+		TradeCount: 3,
+	}
+	if err := storage.InsertMinuteBar(updatedBar); err != nil {
+		t.Fatalf("failed to upsert minute bar: %v", err)
+	}
+	bars, err = storage.FetchUnsentMinutes(10)
+	if err != nil {
+		t.Fatalf("failed to fetch updated minute bars: %v", err)
+	}
+	if len(bars) != 1 || bars[0].TradeCount != 3 || bars[0].High != 1.3 {
+		t.Fatalf("expected refreshed bar with 3 trades, got %+v", bars)
+	}
+
 	if err := storage.SetState("kraken_last", "123"); err != nil {
 		t.Fatalf("failed to set state: %v", err)
 	}

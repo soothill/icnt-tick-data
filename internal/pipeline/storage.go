@@ -210,15 +210,17 @@ func (s *Storage) ListMissingMinutes(currentMinuteStart int64, limit int) ([]int
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rows, err := s.db.Query(`
-		SELECT m.minute_ts
-		FROM (
-			SELECT DISTINCT CAST(ts_ns / ? AS INTEGER) * ? AS minute_ts
+		WITH minute_counts AS (
+			SELECT CAST(ts_ns / ? AS INTEGER) * ? AS minute_ts, COUNT(*) AS tick_count
 			FROM ticks
 			WHERE ts_ns < ?
-		) m
-		LEFT JOIN minute_bars b ON b.minute_ts = m.minute_ts
-		WHERE b.minute_ts IS NULL
-		ORDER BY m.minute_ts ASC
+			GROUP BY minute_ts
+		)
+		SELECT mc.minute_ts
+		FROM minute_counts mc
+		LEFT JOIN minute_bars b ON b.minute_ts = mc.minute_ts
+		WHERE b.minute_ts IS NULL OR b.trade_count != mc.tick_count
+		ORDER BY mc.minute_ts ASC
 		LIMIT ?
 	`, MinuteNS, MinuteNS, currentMinuteStart, limit)
 	if err != nil {
@@ -264,9 +266,17 @@ func (s *Storage) InsertMinuteBar(bar MinuteBar) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.db.Exec(`
-		INSERT OR IGNORE INTO minute_bars (
+		INSERT INTO minute_bars (
 			minute_ts, open, high, low, close, volume, trade_count
 		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(minute_ts) DO UPDATE SET
+			open = excluded.open,
+			high = excluded.high,
+			low = excluded.low,
+			close = excluded.close,
+			volume = excluded.volume,
+			trade_count = excluded.trade_count,
+			sent = 0
 	`, bar.MinuteTS, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.TradeCount)
 	return err
 }

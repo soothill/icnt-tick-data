@@ -250,7 +250,11 @@ func aggregateMissingMinutes(storage *Storage) (int, error) {
 	return count, nil
 }
 
-func flushLoop(ctx context.Context, storage *Storage, writer *InfluxWriter, config Config) {
+type lineWriter interface {
+	SendLines(context.Context, []string) error
+}
+
+func flushLoop(ctx context.Context, storage *Storage, writer lineWriter, config Config) {
 	tickBackoff := NewBackoff(2*time.Second, 60*time.Second)
 	minuteBackoff := NewBackoff(2*time.Second, 60*time.Second)
 	for {
@@ -289,7 +293,7 @@ func flushLoop(ctx context.Context, storage *Storage, writer *InfluxWriter, conf
 func flushTicks(
 	ctx context.Context,
 	storage *Storage,
-	writer *InfluxWriter,
+	writer lineWriter,
 	config Config,
 ) error {
 	ticks, err := storage.FetchUnsentTicks(config.BatchSize)
@@ -321,7 +325,7 @@ func flushTicks(
 func flushMinutes(
 	ctx context.Context,
 	storage *Storage,
-	writer *InfluxWriter,
+	writer lineWriter,
 	config Config,
 ) error {
 	minutes, err := storage.FetchUnsentMinutes(config.BatchSize)

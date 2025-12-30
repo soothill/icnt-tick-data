@@ -97,10 +97,14 @@ check-connectivity: ## Verify connectivity to InfluxDB and Kraken endpoints usin
 	KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR:-$${KRAKEN_PAIR:-ICNT/USD}}; \
 	KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR//[\/-]/}; \
 	KRAKEN_WS_URL=$${KRAKEN_WS_URL:-wss://ws.kraken.com}; \
-	python - <<'PY'
-		import os
-		import socket
-		import ssl
+	if command -v python3 >/dev/null 2>&1; then PY_CMD=python3; \
+	elif command -v python >/dev/null 2>&1; then PY_CMD=python; \
+	elif command -v podman >/dev/null 2>&1; then PY_CMD="podman run --rm -e INFLUX_DISABLED -e INFLUX_URL -e KRAKEN_REST_URL -e KRAKEN_REST_PAIR -e KRAKEN_WS_URL python:3.11-slim python"; \
+	else echo "python (or python3) not found; install Python 3 or Podman to run check" >&2; exit 1; fi; \
+	$$PY_CMD - <<'PY'
+import os
+import socket
+import ssl
 		import sys
 		import urllib.parse
 		import urllib.request

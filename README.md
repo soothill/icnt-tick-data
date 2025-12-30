@@ -106,3 +106,7 @@ Run tests:
 ```sh
 go test ./...
 ```
+
+## Grafana Dashboard
+
+Import `grafana/icnt-grafana-dashboard.json` into Grafana and point it at your InfluxDB data source. Set the dashboard variables for bucket and measurement names if you changed them from the defaults (`icnt_usd_ticks`, `icnt_usd_minutes`). Panels cover OHLC candles, close price, per-minute volume and trade counts, 5m stacked buy vs sell volume, and average trade size.

@@ -120,7 +120,8 @@ check-connectivity: ## Verify connectivity to InfluxDB and Kraken endpoints usin
 		echo "[fail] Kraken REST"; fail=1; \
 	fi; \
 	echo "Checking Kraken WS TCP $$KRAKEN_WS_HOST:$$KRAKEN_WS_PORT"; \
-	if timeout 5 bash -lc 'cat </dev/null >/dev/tcp/'"$$KRAKEN_WS_HOST"'/'"$$KRAKEN_WS_PORT" >/dev/null 2>&1; then \
+	WS_PROBE="cat </dev/null >/dev/tcp/$$KRAKEN_WS_HOST/$$KRAKEN_WS_PORT"; \
+	if timeout 5 bash -c "$$WS_PROBE" >/dev/null 2>&1; then \
 		echo "[ok] Kraken WS TCP reachable"; \
 	else \
 		echo "[fail] Kraken WS TCP reachable"; fail=1; \

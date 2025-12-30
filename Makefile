@@ -102,16 +102,18 @@ check-connectivity: ## Verify connectivity to InfluxDB and Kraken endpoints usin
 	WS_PORT=$$(printf "%s" "$$KRAKEN_WS_URL" | sed -nE 's#^[a-zA-Z]+://[^/:]+:([0-9]+).*#\\1#p'); \
 	if [ -z "$$WS_PORT" ]; then case "$$KRAKEN_WS_URL" in wss://*|https://*) WS_PORT=443 ;; *) WS_PORT=80 ;; esac; fi; \
 	fail=0; \
-	if printf "%s" "$$INFLUX_DISABLED" | grep -qi '^\(1\|true\|yes\)$'; then \
+	case "$${INFLUX_DISABLED,,}" in 1|true|yes) \
 		echo "[skip] InfluxDB checks disabled by INFLUX_DISABLED"; \
-	else \
+	;; \
+	*) \
 		echo "Checking InfluxDB health at $$INFLUX_URL/health"; \
 		if curl -fsS --max-time 5 "$$INFLUX_URL/health" >/dev/null; then \
 			echo "[ok] InfluxDB health"; \
 		else \
 			echo "[fail] InfluxDB health"; fail=1; \
 		fi; \
-	fi; \
+	;; \
+	esac; \
 	echo "Checking Kraken REST at $$KRAKEN_REST_URL?pair=$$KRAKEN_REST_PAIR"; \
 	if curl -fsS --max-time 8 "$$KRAKEN_REST_URL?pair=$$KRAKEN_REST_PAIR" >/dev/null; then \
 		echo "[ok] Kraken REST"; \

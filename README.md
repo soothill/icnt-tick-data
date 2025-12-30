@@ -64,7 +64,13 @@ make status
 make logs-tail
 ```
 
-6) Run tests in Podman:
+6) Validate connectivity (uses your env config):
+
+```sh
+make check-connectivity
+```
+
+7) Run tests in Podman:
 
 ```sh
 make test

@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 .env
 bin/
+/pipeline
 *.sqlite
 *.db
 config/*.env

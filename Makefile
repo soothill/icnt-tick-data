@@ -97,50 +97,50 @@ check-connectivity: ## Verify connectivity to InfluxDB and Kraken endpoints usin
 	export KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR:-$${KRAKEN_PAIR:-ICNT/USD}}; \
 	export KRAKEN_WS_URL=$${KRAKEN_WS_URL:-wss://ws.kraken.com}; \
 	bash -s <<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
+	#!/usr/bin/env bash
+	set -euo pipefail
 
-ws_url="${KRAKEN_WS_URL:-wss://ws.kraken.com}"
-ws_host="$(printf "%s" "$ws_url" | sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#')"
-ws_port="$(printf "%s" "$ws_url" | sed -nE 's#^[a-zA-Z]+://[^/:]+:([0-9]+).*#\1#p')"
-if [ -z "$ws_port" ]; then
-	case "$ws_url" in
-		wss://*|https://*) ws_port=443 ;;
-		*) ws_port=80 ;;
-	esac
-fi
+	ws_url="${KRAKEN_WS_URL:-wss://ws.kraken.com}"
+	ws_host="$(printf "%s" "$ws_url" | sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#')"
+	ws_port="$(printf "%s" "$ws_url" | sed -nE 's#^[a-zA-Z]+://[^/:]+:([0-9]+).*#\1#p')"
+	if [ -z "$ws_port" ]; then
+		case "$ws_url" in
+			wss://*|https://*) ws_port=443 ;;
+			*) ws_port=80 ;;
+		esac
+	fi
 
-fail=0
-if printf "%s" "${INFLUX_DISABLED}" | grep -qi '^\(1\|true\|yes\)$'; then
-	echo "[skip] InfluxDB checks disabled by INFLUX_DISABLED"
-else
-	echo "Checking InfluxDB health at ${INFLUX_URL}/health"
-	if curl -fsS --max-time 5 "${INFLUX_URL}/health" >/dev/null; then
-		echo "[ok] InfluxDB health"
+	fail=0
+	if printf "%s" "${INFLUX_DISABLED}" | grep -qi '^\(1\|true\|yes\)$'; then
+		echo "[skip] InfluxDB checks disabled by INFLUX_DISABLED"
 	else
-		echo "[fail] InfluxDB health"
+		echo "Checking InfluxDB health at ${INFLUX_URL}/health"
+		if curl -fsS --max-time 5 "${INFLUX_URL}/health" >/dev/null; then
+			echo "[ok] InfluxDB health"
+		else
+			echo "[fail] InfluxDB health"
+			fail=1
+		fi
+	fi
+
+	rest_pair="$(printf "%s" "${KRAKEN_REST_PAIR}" | tr -d '/-')"
+	echo "Checking Kraken REST at ${KRAKEN_REST_URL}?pair=${rest_pair}"
+	if curl -fsS --max-time 8 "${KRAKEN_REST_URL}?pair=${rest_pair}" >/dev/null; then
+		echo "[ok] Kraken REST"
+	else
+		echo "[fail] Kraken REST"
 		fail=1
 	fi
-fi
 
-rest_pair="$(printf "%s" "${KRAKEN_REST_PAIR}" | tr -d '/-')"
-echo "Checking Kraken REST at ${KRAKEN_REST_URL}?pair=${rest_pair}"
-if curl -fsS --max-time 8 "${KRAKEN_REST_URL}?pair=${rest_pair}" >/dev/null; then
-	echo "[ok] Kraken REST"
-else
-	echo "[fail] Kraken REST"
-	fail=1
-fi
+	echo "Checking Kraken WS TCP ${ws_host}:${ws_port}"
+	if timeout 5 bash -c "exec 3<>/dev/tcp/${ws_host}/${ws_port}" >/dev/null 2>&1; then
+		echo "[ok] Kraken WS TCP reachable"
+	else
+		echo "[fail] Kraken WS TCP reachable"
+		fail=1
+	fi
 
-echo "Checking Kraken WS TCP ${ws_host}:${ws_port}"
-if timeout 5 bash -c "exec 3<>/dev/tcp/${ws_host}/${ws_port}" >/dev/null 2>&1; then
-	echo "[ok] Kraken WS TCP reachable"
-else
-	echo "[fail] Kraken WS TCP reachable"
-	fail=1
-fi
-
-exit "$fail"
+	exit "$fail"
 EOS
 
 clean: ## Remove the built image

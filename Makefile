@@ -97,78 +97,35 @@ check-connectivity: ## Verify connectivity to InfluxDB and Kraken endpoints usin
 	KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR:-$${KRAKEN_PAIR:-ICNT/USD}}; \
 	KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR//[\/-]/}; \
 	KRAKEN_WS_URL=$${KRAKEN_WS_URL:-wss://ws.kraken.com}; \
-	if command -v python3 >/dev/null 2>&1; then PY_CMD=python3; \
-	elif command -v python >/dev/null 2>&1; then PY_CMD=python; \
-	elif command -v podman >/dev/null 2>&1; then PY_CMD="podman run --rm -e INFLUX_DISABLED -e INFLUX_URL -e KRAKEN_REST_URL -e KRAKEN_REST_PAIR -e KRAKEN_WS_URL python:3.11-slim python"; \
-	else echo "python (or python3) not found; install Python 3 or Podman to run check" >&2; exit 1; fi; \
-	$$PY_CMD - <<-'PY'
-	import os
-	import socket
-	import ssl
-	import sys
-	import urllib.parse
-	import urllib.request
-
-
-	def bool_env(val: str) -> bool:
-	    return str(val).strip().lower() in ("1", "true", "yes", "on")
-
-
-	influx_disabled = bool_env(os.environ.get("INFLUX_DISABLED", "0"))
-	influx_url = os.environ["INFLUX_URL"].rstrip("/")
-	kraken_rest_url = os.environ["KRAKEN_REST_URL"]
-	kraken_rest_pair = os.environ["KRAKEN_REST_PAIR"]
-	kraken_ws_url = os.environ["KRAKEN_WS_URL"]
-	failures = []
-
-
-	def check_http(name, url, params=None, headers=None):
-	    final = url
-	    if params:
-	        final = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-	    try:
-	        req = urllib.request.Request(final, headers=headers or {})
-	        with urllib.request.urlopen(req, timeout=8) as resp:
-	            sys.stdout.write(f"[ok] {name} -> {resp.status}\\n")
-	            return True
-	    except Exception as exc:
-	        sys.stdout.write(f"[fail] {name}: {exc}\\n")
-	        return False
-
-
-	def check_ws(endpoint):
-	    parsed = urllib.parse.urlparse(endpoint)
-	    host = parsed.hostname
-	    port = parsed.port or (443 if parsed.scheme == "wss" else 80)
-	    try:
-	        sock = socket.create_connection((host, port), timeout=5)
-	        if parsed.scheme == "wss":
-	            ctx = ssl.create_default_context()
-	            sock = ctx.wrap_socket(sock, server_hostname=host)
-	        sock.close()
-	        sys.stdout.write(f"[ok] {endpoint} reachable\\n")
-	        return True
-	    except Exception as exc:
-	        sys.stdout.write(f"[fail] {endpoint}: {exc}\\n")
-	        return False
-
-
-	if not influx_disabled:
-	    health = f"{influx_url}/health"
-	    if not check_http("InfluxDB health", health):
-	        failures.append("influx")
-	else:
-	    sys.stdout.write("[skip] InfluxDB checks disabled by INFLUX_DISABLED\\n")
-
-	rest_params = {"pair": kraken_rest_pair}
-	if not check_http("Kraken REST", kraken_rest_url, rest_params):
-	    failures.append("kraken_rest")
-
-	if not check_ws(kraken_ws_url):
-	    failures.append("kraken_ws")
-
-	sys.exit(1 if failures else 0)
-	PY
+	KRAKEN_WS_HOST=$$(printf "%s" "$$KRAKEN_WS_URL" | sed -E 's#^[a-zA-Z]+://([^/:]+).*$#\\1#'); \
+	KRAKEN_WS_PORT=$$(printf "%s" "$$KRAKEN_WS_URL" | sed -nE 's#^[a-zA-Z]+://[^/:]+:([0-9]+).*$#\\1#p'); \
+	if [ -z "$$KRAKEN_WS_PORT" ]; then \
+		if printf "%s" "$$KRAKEN_WS_URL" | grep -qi '^wss://'; then KRAKEN_WS_PORT=443; else KRAKEN_WS_PORT=80; fi; \
+	fi; \
+	fail=0; \
+	if printf "%s" "$$INFLUX_DISABLED" | grep -qi '^\(1\|true\|yes\)$'; then \
+		echo "[skip] InfluxDB checks disabled by INFLUX_DISABLED"; \
+	else \
+		echo "Checking InfluxDB health at $$INFLUX_URL/health"; \
+		if curl -fsS --max-time 5 "$$INFLUX_URL/health" >/dev/null; then \
+			echo "[ok] InfluxDB health"; \
+		else \
+			echo "[fail] InfluxDB health"; fail=1; \
+		fi; \
+	fi; \
+	echo "Checking Kraken REST at $$KRAKEN_REST_URL?pair=$$KRAKEN_REST_PAIR"; \
+	if curl -fsS --max-time 8 "$$KRAKEN_REST_URL?pair=$$KRAKEN_REST_PAIR" >/dev/null; then \
+		echo "[ok] Kraken REST"; \
+	else \
+		echo "[fail] Kraken REST"; fail=1; \
+	fi; \
+	echo "Checking Kraken WS TCP $$KRAKEN_WS_HOST:$$KRAKEN_WS_PORT"; \
+	if timeout 5 bash -c "cat </dev/null >/dev/tcp/$$KRAKEN_WS_HOST/$$KRAKEN_WS_PORT" >/dev/null 2>&1; then \
+		echo "[ok] Kraken WS TCP reachable"; \
+	else \
+		echo "[fail] Kraken WS TCP reachable"; fail=1; \
+	fi; \
+	exit $$fail
 
 clean: ## Remove the built image
 	podman image rm -f $(IMAGE_NAME)

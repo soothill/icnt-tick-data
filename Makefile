@@ -101,7 +101,7 @@ check-connectivity: ## Verify connectivity to InfluxDB and Kraken endpoints usin
 	elif command -v python >/dev/null 2>&1; then PY_CMD=python; \
 	elif command -v podman >/dev/null 2>&1; then PY_CMD="podman run --rm -e INFLUX_DISABLED -e INFLUX_URL -e KRAKEN_REST_URL -e KRAKEN_REST_PAIR -e KRAKEN_WS_URL python:3.11-slim python"; \
 	else echo "python (or python3) not found; install Python 3 or Podman to run check" >&2; exit 1; fi; \
-	cat <<'PY' | sed 's/^\t//' | $$PY_CMD -
+	$$PY_CMD - <<-'PY'
 	import os
 	import socket
 	import ssl

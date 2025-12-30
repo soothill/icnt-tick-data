@@ -50,7 +50,7 @@ install: network install-config install-units reload ## Install config, units, a
 reload: ## Reload the user systemd daemon
 	$(SYSTEMCTL) daemon-reload
 
-enable: ## Enable the container services for the current user
+enable: install ## Enable the container services for the current user (ensures units installed)
 	$(SYSTEMCTL) enable container-influxdb.service
 	$(SYSTEMCTL) enable container-icnt-tick-data.service
 

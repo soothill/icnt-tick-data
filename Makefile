@@ -13,6 +13,7 @@ ENV_FILE ?= $(CONFIG_DIR)/icnt-tick-data.env
 
 QUADLET_DIR := $(HOME)/.config/containers/systemd
 CONFIG_DIR := $(HOME)/.config/icnt-tick-data
+DATA_DIR := $(HOME)/.local/share/icnt-tick-data
 SYSTEMCTL := systemctl --user
 
 help: ## Show available make targets and their descriptions
@@ -36,6 +37,7 @@ network: ## Ensure the icnt-tick-data Podman network exists
 
 install-config: ## Copy example env files to the local config directory if missing
 	mkdir -p $(CONFIG_DIR)
+	mkdir -p $(DATA_DIR)
 	if [ ! -f $(CONFIG_DIR)/icnt-tick-data.env ]; then \
 		cp config/icnt-tick-data.env.example $(CONFIG_DIR)/icnt-tick-data.env; \
 	fi

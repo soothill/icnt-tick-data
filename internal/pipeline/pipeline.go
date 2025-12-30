@@ -71,7 +71,7 @@ func Run(ctx context.Context, config Config) error {
 			case trades := <-tradeCh:
 				inserted, err := storage.InsertTicks(trades)
 				if err != nil {
-					log.Printf("failed to store trades: %v", err)
+					logFailuref("failed to store trades: %v", err)
 					continue
 				}
 				if inserted > 0 {
@@ -86,7 +86,7 @@ func Run(ctx context.Context, config Config) error {
 		case tradeCh <- trades:
 		case <-ctx.Done():
 		default:
-			log.Printf("dropping %d trades: channel full (%d/%d)", len(trades), len(tradeCh), cap(tradeCh))
+			logFailuref("dropping %d trades: channel full (%d/%d)", len(trades), len(tradeCh), cap(tradeCh))
 		}
 	}, func() {
 		select {
@@ -134,7 +134,7 @@ func backfillLoop(
 			continue
 		}
 		if err := backfillOnce(ctx, storage, rest); err != nil {
-			log.Printf("backfill failed: %v", err)
+			logFailuref("backfill failed: %v", err)
 			nextAllowed = time.Now().Add(backoff.Next())
 			continue
 		}
@@ -194,7 +194,7 @@ func aggregateLoop(ctx context.Context, storage *Storage, interval time.Duration
 		case <-ticker.C:
 			count, err := aggregateMissingMinutes(storage)
 			if err != nil {
-				log.Printf("aggregation failed: %v", err)
+				logFailuref("aggregation failed: %v", err)
 				continue
 			}
 			if count > 0 {
@@ -298,7 +298,7 @@ func flushTicks(
 ) error {
 	ticks, err := storage.FetchUnsentTicks(config.BatchSize)
 	if err != nil {
-		log.Printf("tick fetch failed: %v", err)
+		logFailuref("tick fetch failed: %v", err)
 		return err
 	}
 	if len(ticks) == 0 {
@@ -311,11 +311,11 @@ func flushTicks(
 		tradeIDs = append(tradeIDs, tick.TradeID)
 	}
 	if err := writer.SendLines(ctx, lines); err != nil {
-		log.Printf("tick flush failed: %v", err)
+		logFailuref("tick flush failed: %v", err)
 		return err
 	}
 	if err := storage.MarkTicksSent(tradeIDs); err != nil {
-		log.Printf("tick mark failed: %v", err)
+		logFailuref("tick mark failed: %v", err)
 		return err
 	}
 	log.Printf("flushed %d ticks", len(ticks))
@@ -330,7 +330,7 @@ func flushMinutes(
 ) error {
 	minutes, err := storage.FetchUnsentMinutes(config.BatchSize)
 	if err != nil {
-		log.Printf("minute fetch failed: %v", err)
+		logFailuref("minute fetch failed: %v", err)
 		return err
 	}
 	if len(minutes) == 0 {
@@ -343,11 +343,11 @@ func flushMinutes(
 		minuteTS = append(minuteTS, bar.MinuteTS)
 	}
 	if err := writer.SendLines(ctx, lines); err != nil {
-		log.Printf("minute flush failed: %v", err)
+		logFailuref("minute flush failed: %v", err)
 		return err
 	}
 	if err := storage.MarkMinutesSent(minuteTS); err != nil {
-		log.Printf("minute mark failed: %v", err)
+		logFailuref("minute mark failed: %v", err)
 		return err
 	}
 	log.Printf("flushed %d minute bars", len(minutes))

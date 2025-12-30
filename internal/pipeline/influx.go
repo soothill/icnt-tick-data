@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -174,14 +173,14 @@ func (w *InfluxWriter) resolveIP(ctx context.Context, host string) (string, erro
 			return "", ctx.Err()
 		}
 		if cached := w.getCachedIP(); cached != "" {
-			log.Printf("using cached InfluxDB IP %s for host %s after DNS error: %v", cached, host, err)
+			logFailuref("using cached InfluxDB IP %s for host %s after DNS error: %v", cached, host, err)
 			return cached, nil
 		}
 		return "", err
 	}
 	if len(ips) == 0 {
 		if cached := w.getCachedIP(); cached != "" {
-			log.Printf("using cached InfluxDB IP %s for host %s: DNS returned no results", cached, host)
+			logFailuref("using cached InfluxDB IP %s for host %s: DNS returned no results", cached, host)
 			return cached, nil
 		}
 		return "", fmt.Errorf("no IPs resolved for %s", host)

@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,10 +12,18 @@ import (
 )
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			pipeline.LogFailuref("pipeline panic: %v", r)
+			os.Exit(1)
+		}
+	}()
 	config := pipeline.LoadConfig()
+	pipeline.LogInfof("pipeline starting; pair=%s influx_disabled=%t", config.KrakenPair, config.InfluxDisabled)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if err := pipeline.Run(ctx, config); err != nil {
-		log.Fatalf("pipeline stopped: %v", err)
+		pipeline.LogFailuref("pipeline stopped: %v", err)
+		os.Exit(1)
 	}
 }

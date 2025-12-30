@@ -5,173 +5,147 @@ package pipeline
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
-func TestStorageLifecycle(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "ticks.sqlite")
-	storage, err := NewStorage(path)
+func newTestStorage(t *testing.T) *Storage {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "ticks.sqlite")
+	store, err := NewStorage(path)
 	if err != nil {
-		t.Fatalf("failed to create storage: %v", err)
+		t.Fatalf("NewStorage error: %v", err)
 	}
-	t.Cleanup(func() {
-		_ = storage.Close()
-	})
-	if err := storage.Init(); err != nil {
-		t.Fatalf("failed to init storage: %v", err)
+	if err := store.Init(); err != nil {
+		t.Fatalf("Init error: %v", err)
 	}
+	return store
+}
 
+func TestStorageInsertFetchAndMarkTicks(t *testing.T) {
+	store := newTestStorage(t)
 	ticks := []Tick{
-		{
-			TradeID:   "t1",
-			TSNS:      1700000000123456789,
-			Price:     1.1,
-			Volume:    2.2,
-			Side:      "b",
-			OrderType: "l",
-			Misc:      "",
-			Source:    "ws",
-		},
-		{
-			TradeID:   "t2",
-			TSNS:      1700000000450000000,
-			Price:     1.2,
-			Volume:    3.3,
-			Side:      "s",
-			OrderType: "l",
-			Misc:      "",
-			Source:    "ws",
-		},
+		{TradeID: "a", TSNS: 10, Price: 1, Volume: 1, Side: "b", OrderType: "l", Misc: "", Source: "ws"},
+		{TradeID: "b", TSNS: 20, Price: 2, Volume: 2, Side: "s", OrderType: "l", Misc: "", Source: "ws"},
+		{TradeID: "c", TSNS: 15, Price: 3, Volume: 3, Side: "b", OrderType: "l", Misc: "", Source: "ws"},
 	}
-	inserted, err := storage.InsertTicks(ticks)
+	if inserted, err := store.InsertTicks(ticks); err != nil || inserted != len(ticks) {
+		t.Fatalf("InsertTicks inserted=%d err=%v", inserted, err)
+	}
+	if inserted, err := store.InsertTicks(ticks); err != nil || inserted != 0 {
+		t.Fatalf("duplicate InsertTicks inserted=%d err=%v", inserted, err)
+	}
+	fetched, err := store.FetchUnsentTicks(10)
 	if err != nil {
-		t.Fatalf("failed to insert ticks: %v", err)
+		t.Fatalf("FetchUnsentTicks error: %v", err)
 	}
-	if inserted != 2 {
-		t.Fatalf("expected 2 inserts, got %d", inserted)
+	if len(fetched) != len(ticks) {
+		t.Fatalf("expected %d unsent ticks, got %d", len(ticks), len(fetched))
 	}
-	inserted, err = storage.InsertTicks([]Tick{ticks[0]})
+	if fetched[0].TradeID != "a" || fetched[1].TradeID != "c" || fetched[2].TradeID != "b" {
+		t.Fatalf("ticks not ordered by ts_ns: %+v", fetched)
+	}
+	if err := store.MarkTicksSent([]string{"a", "b", "c"}); err != nil {
+		t.Fatalf("MarkTicksSent error: %v", err)
+	}
+	fetched, err = store.FetchUnsentTicks(10)
 	if err != nil {
-		t.Fatalf("failed to insert duplicate: %v", err)
+		t.Fatalf("FetchUnsentTicks after mark error: %v", err)
 	}
-	if inserted != 0 {
-		t.Fatalf("expected 0 inserts for duplicate, got %d", inserted)
+	if len(fetched) != 0 {
+		t.Fatalf("expected 0 unsent ticks after mark, got %d", len(fetched))
 	}
+}
 
-	unsent, err := storage.FetchUnsentTicks(10)
+func TestStorageMinutesAndMark(t *testing.T) {
+	store := newTestStorage(t)
+	bar := MinuteBar{MinuteTS: 60, Open: 1, High: 2, Low: 1, Close: 2, Volume: 5, TradeCount: 3}
+	if err := store.InsertMinuteBar(bar); err != nil {
+		t.Fatalf("InsertMinuteBar error: %v", err)
+	}
+	bar.Volume = 6
+	if err := store.InsertMinuteBar(bar); err != nil {
+		t.Fatalf("InsertMinuteBar update error: %v", err)
+	}
+	bars, err := store.FetchUnsentMinutes(10)
 	if err != nil {
-		t.Fatalf("failed to fetch ticks: %v", err)
+		t.Fatalf("FetchUnsentMinutes error: %v", err)
 	}
-	if len(unsent) != 2 {
-		t.Fatalf("expected 2 unsent ticks, got %d", len(unsent))
+	if len(bars) != 1 || bars[0].Volume != 6 {
+		t.Fatalf("unexpected bars: %+v", bars)
 	}
-
-	if err := storage.MarkTicksSent([]string{"t1", "t2"}); err != nil {
-		t.Fatalf("failed to mark sent: %v", err)
+	if err := store.MarkMinutesSent([]int64{bar.MinuteTS}); err != nil {
+		t.Fatalf("MarkMinutesSent error: %v", err)
 	}
-	unsent, err = storage.FetchUnsentTicks(10)
+	bars, err = store.FetchUnsentMinutes(10)
 	if err != nil {
-		t.Fatalf("failed to fetch ticks after mark: %v", err)
-	}
-	if len(unsent) != 0 {
-		t.Fatalf("expected 0 unsent ticks, got %d", len(unsent))
-	}
-
-	minuteStart := (ticks[0].TSNS / MinuteNS) * MinuteNS
-	missing, err := storage.ListMissingMinutes(minuteStart+MinuteNS, 10)
-	if err != nil {
-		t.Fatalf("failed to list missing minutes: %v", err)
-	}
-	if len(missing) != 1 || missing[0] != minuteStart {
-		t.Fatalf("expected missing minute %d, got %v", minuteStart, missing)
-	}
-	minuteTicks, err := storage.FetchTicksForMinute(minuteStart)
-	if err != nil {
-		t.Fatalf("failed to fetch ticks for minute: %v", err)
-	}
-	if len(minuteTicks) != 2 {
-		t.Fatalf("expected 2 ticks in minute, got %d", len(minuteTicks))
-	}
-
-	bar := MinuteBar{
-		MinuteTS:   minuteStart,
-		Open:       1.1,
-		High:       1.2,
-		Low:        1.1,
-		Close:      1.2,
-		Volume:     5.5,
-		TradeCount: 2,
-	}
-	if err := storage.InsertMinuteBar(bar); err != nil {
-		t.Fatalf("failed to insert minute bar: %v", err)
-	}
-	bars, err := storage.FetchUnsentMinutes(10)
-	if err != nil {
-		t.Fatalf("failed to fetch minute bars: %v", err)
-	}
-	if len(bars) != 1 {
-		t.Fatalf("expected 1 unsent minute bar, got %d", len(bars))
-	}
-	if err := storage.MarkMinutesSent([]int64{minuteStart}); err != nil {
-		t.Fatalf("failed to mark minute sent: %v", err)
-	}
-	bars, err = storage.FetchUnsentMinutes(10)
-	if err != nil {
-		t.Fatalf("failed to fetch minute bars after mark: %v", err)
+		t.Fatalf("FetchUnsentMinutes after mark error: %v", err)
 	}
 	if len(bars) != 0 {
-		t.Fatalf("expected 0 unsent minute bars, got %d", len(bars))
+		t.Fatalf("expected 0 unsent minutes after mark, got %d", len(bars))
+	}
+}
+
+func TestListMissingMinutesAndAggregate(t *testing.T) {
+	store := newTestStorage(t)
+	base := time.Now().Add(-3 * time.Minute)
+	minute0 := (base.UnixNano() / MinuteNS) * MinuteNS
+	minute1 := minute0 + MinuteNS
+
+	ticks := []Tick{
+		{TradeID: "m0a", TSNS: minute0 + 1_000, Price: 1, Volume: 1, Side: "b", OrderType: "l", Misc: "", Source: "ws"},
+		{TradeID: "m0b", TSNS: minute0 + 2_000, Price: 3, Volume: 2, Side: "b", OrderType: "l", Misc: "", Source: "ws"},
+		{TradeID: "m1a", TSNS: minute1 + 1_000, Price: 5, Volume: 4, Side: "s", OrderType: "l", Misc: "", Source: "ws"},
+	}
+	if inserted, err := store.InsertTicks(ticks); err != nil || inserted != len(ticks) {
+		t.Fatalf("InsertTicks inserted=%d err=%v", inserted, err)
+	}
+	missing, err := store.ListMissingMinutes(minute1+MinuteNS, 10)
+	if err != nil {
+		t.Fatalf("ListMissingMinutes error: %v", err)
+	}
+	if len(missing) != 2 || missing[0] != minute0 || missing[1] != minute1 {
+		t.Fatalf("unexpected missing minutes: %v", missing)
 	}
 
-	// New tick arrives for an already aggregated minute; bar should be re-aggregated and marked unsent.
-	extraTick := Tick{
-		TradeID:   "t3",
-		TSNS:      minuteStart + 10,
-		Price:     1.3,
-		Volume:    1.1,
-		Side:      "b",
-		OrderType: "l",
-		Misc:      "",
-		Source:    "ws",
-	}
-	if _, err := storage.InsertTicks([]Tick{extraTick}); err != nil {
-		t.Fatalf("failed to insert extra tick: %v", err)
-	}
-	missing, err = storage.ListMissingMinutes(minuteStart+MinuteNS, 10)
+	count, err := aggregateMissingMinutes(store)
 	if err != nil {
-		t.Fatalf("failed to list missing minutes after new tick: %v", err)
+		t.Fatalf("aggregateMissingMinutes error: %v", err)
 	}
-	if len(missing) != 1 || missing[0] != minuteStart {
-		t.Fatalf("expected missing minute %d after new tick, got %v", minuteStart, missing)
+	if count != 2 {
+		t.Fatalf("expected 2 aggregated minutes, got %d", count)
 	}
-	updatedBar := MinuteBar{
-		MinuteTS:   minuteStart,
-		Open:       1.1,
-		High:       1.3,
-		Low:        1.1,
-		Close:      1.3,
-		Volume:     6.6,
-		TradeCount: 3,
-	}
-	if err := storage.InsertMinuteBar(updatedBar); err != nil {
-		t.Fatalf("failed to upsert minute bar: %v", err)
-	}
-	bars, err = storage.FetchUnsentMinutes(10)
+	bars, err := store.FetchUnsentMinutes(10)
 	if err != nil {
-		t.Fatalf("failed to fetch updated minute bars: %v", err)
+		t.Fatalf("FetchUnsentMinutes error: %v", err)
 	}
-	if len(bars) != 1 || bars[0].TradeCount != 3 || bars[0].High != 1.3 {
-		t.Fatalf("expected refreshed bar with 3 trades, got %+v", bars)
+	if len(bars) != 2 {
+		t.Fatalf("expected 2 aggregated bars, got %d", len(bars))
 	}
+	if bars[0].MinuteTS != minute0 || bars[0].Open != 1 || bars[0].Close != 3 || bars[0].High != 3 || bars[0].Low != 1 || bars[0].Volume != 3 || bars[0].TradeCount != 2 {
+		t.Fatalf("unexpected first bar: %+v", bars[0])
+	}
+	if bars[1].MinuteTS != minute1 || bars[1].Open != 5 || bars[1].Close != 5 || bars[1].High != 5 || bars[1].Low != 5 || bars[1].Volume != 4 || bars[1].TradeCount != 1 {
+		t.Fatalf("unexpected second bar: %+v", bars[1])
+	}
+}
 
-	if err := storage.SetState("kraken_last", "123"); err != nil {
-		t.Fatalf("failed to set state: %v", err)
+func TestStorageStateAndStats(t *testing.T) {
+	store := newTestStorage(t)
+	if err := store.SetState("foo", "bar"); err != nil {
+		t.Fatalf("SetState error: %v", err)
 	}
-	state, err := storage.GetState("kraken_last")
+	value, err := store.GetState("foo")
+	if err != nil || value != "bar" {
+		t.Fatalf("GetState value=%s err=%v", value, err)
+	}
+	_, _ = store.InsertTicks([]Tick{{TradeID: "x", TSNS: 1, Price: 1, Volume: 1, Side: "b", OrderType: "l", Misc: "", Source: "ws"}})
+	_ = store.InsertMinuteBar(MinuteBar{MinuteTS: 1, Open: 1, High: 1, Low: 1, Close: 1, Volume: 1, TradeCount: 1})
+
+	stats, err := store.DebugStats()
 	if err != nil {
-		t.Fatalf("failed to get state: %v", err)
+		t.Fatalf("DebugStats error: %v", err)
 	}
-	if state != "123" {
-		t.Fatalf("expected state 123, got %q", state)
+	if stats != "unsent_ticks=1 unsent_minutes=1" {
+		t.Fatalf("unexpected debug stats: %s", stats)
 	}
 }

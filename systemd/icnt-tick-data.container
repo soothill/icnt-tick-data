@@ -2,8 +2,6 @@
 
 [Unit]
 Description=ICNT tick data pipeline (Kraken to InfluxDB)
-Wants=influxdb.service
-After=influxdb.service
 
 [Container]
 Image=localhost/icnt-tick-data:latest

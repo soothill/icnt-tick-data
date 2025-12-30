@@ -43,7 +43,6 @@ install-config: ## Copy example env files to the local config directory if missi
 install-units: ## Install Quadlet unit files into the user systemd directory
 	mkdir -p $(QUADLET_DIR)
 	cp systemd/icnt-tick-data.container $(QUADLET_DIR)/
-	cp systemd/influxdb.container $(QUADLET_DIR)/
 
 install: network install-config install-units reload ## Install config, units, and reload systemd
 
@@ -51,30 +50,25 @@ reload: ## Reload the user systemd daemon
 	$(SYSTEMCTL) daemon-reload
 
 enable: install ## Enable the container services for the current user (ensures units installed)
-	$(SYSTEMCTL) enable influxdb.service
 	$(SYSTEMCTL) enable icnt-tick-data.service
 
 start: ## Start the container services
-	$(SYSTEMCTL) start influxdb.service
 	$(SYSTEMCTL) start icnt-tick-data.service
 
 stop: ## Stop the container services
 	-$(SYSTEMCTL) stop icnt-tick-data.service
-	-$(SYSTEMCTL) stop influxdb.service
 
 restart: ## Restart the container services
 	$(SYSTEMCTL) restart icnt-tick-data.service
-	$(SYSTEMCTL) restart influxdb.service
 
 status: ## Show status for the tick data service
 	$(SYSTEMCTL) status icnt-tick-data.service
 
 logs: ## Show status (with logs) for both services
 	$(SYSTEMCTL) status icnt-tick-data.service --no-pager
-	$(SYSTEMCTL) status influxdb.service --no-pager
 
 logs-tail: ## Tail logs for both services
-	journalctl --user -u icnt-tick-data.service -u influxdb.service -f
+	journalctl --user -u icnt-tick-data.service -f
 
 test: ## Run Go tests inside a Podman container
 	podman run --rm -v $(PWD):/src:Z -w /src $(TEST_IMAGE) go test ./...

@@ -2,7 +2,7 @@
 
 # ICNT Tick Data Pipeline
 
-This repository collects ICNT/USD tick data from Kraken Pro’s public trade feed, caches it locally, aggregates minute bars, and reliably ships both raw ticks and minute summaries to InfluxDB. It is designed for openSUSE MicroOS using Podman + systemd (Quadlet).
+This repository collects ICNT/USD tick data from Kraken Pro’s public trade feed, caches it locally, aggregates minute bars, and reliably ships both raw ticks and minute summaries to InfluxDB. It is designed for openSUSE MicroOS using Podman + systemd (Quadlet) and assumes InfluxDB is provided remotely (no local Influx container is deployed here).
 
 ## Features
 
@@ -49,7 +49,7 @@ make install
 
 - `~/.config/icnt-tick-data/icnt-tick-data.env` (includes pipeline and InfluxDB init settings)
 
-4) Enable and start containers:
+4) Enable and start the pipeline:
 
 ```sh
 make enable

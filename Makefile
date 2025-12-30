@@ -50,7 +50,7 @@ reload: ## Reload the user systemd daemon
 	$(SYSTEMCTL) daemon-reload
 
 enable: install ## Enable the container services for the current user (ensures units installed)
-	$(SYSTEMCTL) enable icnt-tick-data.service
+	$(SYSTEMCTL) enable icnt-tick-data.container
 
 start: ## Start the container services
 	$(SYSTEMCTL) start icnt-tick-data.service

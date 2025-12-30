@@ -52,7 +52,7 @@ make install
 4) Enable and start the pipeline:
 
 ```sh
-make enable
+make enable   # enables the Quadlet unit
 make start
 ```
 

@@ -98,8 +98,8 @@ check-connectivity: ## Verify connectivity to InfluxDB and Kraken endpoints usin
 	KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR:-$${KRAKEN_PAIR:-ICNT/USD}}; \
 	KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR//[\/-]/}; \
 	KRAKEN_WS_URL=$${KRAKEN_WS_URL:-wss://ws.kraken.com}; \
-	WS_HOST=$$(printf "%s" "$$KRAKEN_WS_URL" | sed -E 's#^[a-zA-Z]+://([^/:]+).*#\\1#'); \
-	WS_PORT=$$(printf "%s" "$$KRAKEN_WS_URL" | sed -nE 's#^[a-zA-Z]+://[^/:]+:([0-9]+).*#\\1#p'); \
+	WS_HOST=$$(printf "%s" "$$KRAKEN_WS_URL" | sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#'); \
+	WS_PORT=$$(printf "%s" "$$KRAKEN_WS_URL" | sed -nE 's#^[a-zA-Z]+://[^/:]+:([0-9]+).*#\1#p'); \
 	if [ -z "$$WS_PORT" ]; then case "$$KRAKEN_WS_URL" in wss://*|https://*) WS_PORT=443 ;; *) WS_PORT=80 ;; esac; fi; \
 	fail=0; \
 	case "$${INFLUX_DISABLED,,}" in 1|true|yes) \

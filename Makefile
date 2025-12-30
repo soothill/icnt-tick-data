@@ -89,7 +89,14 @@ fmt: ## Format Go code
 	gofmt -w cmd internal
 
 tidy: ## Sync module dependencies
-	go mod tidy
+	@if command -v go >/dev/null 2>&1; then \
+		go mod tidy; \
+	elif command -v podman >/dev/null 2>&1; then \
+		podman run --rm -v $(PWD):/src:Z -w /src $(TEST_IMAGE) go mod tidy; \
+	else \
+		echo "go or podman not found; install Go 1.21+ or Podman to run tidy" >&2; \
+		exit 1; \
+	fi
 
 clean: ## Remove the built image
 	podman image rm -f $(IMAGE_NAME)

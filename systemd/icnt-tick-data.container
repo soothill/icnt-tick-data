@@ -16,3 +16,6 @@ Network=icnt-tick-data
 
 [Service]
 Restart=always
+
+[Install]
+WantedBy=default.target

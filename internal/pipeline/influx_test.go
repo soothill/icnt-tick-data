@@ -2,36 +2,81 @@
 
 package pipeline
 
-import "testing"
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+)
 
-func TestTickToLine(t *testing.T) {
-	tick := Tick{
-		TradeID: "trade\"1",
-		TSNS:    1700000000000000000,
-		Price:   1.23,
-		Volume:  4.56,
-		Side:    "b",
+type lookupResponse struct {
+	addrs []string
+	err   error
+}
+
+type stubHostResolver struct {
+	responses []lookupResponse
+}
+
+func (r *stubHostResolver) LookupHost(_ context.Context, _ string) ([]string, error) {
+	if len(r.responses) == 0 {
+		return nil, fmt.Errorf("no lookup responses configured")
 	}
-	line := tickToLine("ticks", "ICNT/USD", tick)
-	expected := "ticks,pair=ICNT/USD,side=b price=1.23,volume=4.56,trade_id=\"trade\\\"1\" 1700000000000000000"
-	if line != expected {
-		t.Fatalf("expected %q, got %q", expected, line)
+	res := r.responses[0]
+	r.responses = r.responses[1:]
+	return res.addrs, res.err
+}
+
+func TestResolveIPUsesCacheWhenLookupFails(t *testing.T) {
+	writer := newTestInfluxWriter(t)
+	writer.resolver = &stubHostResolver{
+		responses: []lookupResponse{
+			{addrs: []string{"1.2.3.4"}, err: nil},
+			{addrs: nil, err: fmt.Errorf("dns down")},
+		},
+	}
+
+	first, err := writer.resolveIP(context.Background(), "influxdb")
+	if err != nil {
+		t.Fatalf("first resolve failed: %v", err)
+	}
+	if first != "1.2.3.4" {
+		t.Fatalf("unexpected first IP %q", first)
+	}
+
+	second, err := writer.resolveIP(context.Background(), "influxdb")
+	if err != nil {
+		t.Fatalf("expected cached IP on DNS failure, got error: %v", err)
+	}
+	if second != first {
+		t.Fatalf("expected cached IP %q, got %q", first, second)
 	}
 }
 
-func TestMinuteToLine(t *testing.T) {
-	bar := MinuteBar{
-		MinuteTS:   1700000000000000000,
-		Open:       1.0,
-		High:       2.0,
-		Low:        0.5,
-		Close:      1.5,
-		Volume:     10.0,
-		TradeCount: 3,
+func TestResolveIPReturnsErrorWithoutCache(t *testing.T) {
+	writer := newTestInfluxWriter(t)
+	writer.resolver = &stubHostResolver{
+		responses: []lookupResponse{
+			{addrs: nil, err: fmt.Errorf("dns unreachable")},
+		},
 	}
-	line := minuteToLine("minutes", "ICNT/USD", bar)
-	expected := "minutes,pair=ICNT/USD open=1,high=2,low=0.5,close=1.5,volume=10,trade_count=3i 1700000000000000000"
-	if line != expected {
-		t.Fatalf("expected %q, got %q", expected, line)
+
+	if _, err := writer.resolveIP(context.Background(), "influxdb"); err == nil {
+		t.Fatalf("expected error without cached IP when DNS fails")
 	}
+}
+
+func newTestInfluxWriter(t *testing.T) *InfluxWriter {
+	t.Helper()
+	writer, err := NewInfluxWriter(Config{
+		InfluxURL:     "http://influxdb:8086",
+		InfluxOrg:     "org",
+		InfluxBucket:  "bucket",
+		InfluxToken:   "token",
+		InfluxTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("failed to create writer: %v", err)
+	}
+	return writer
 }

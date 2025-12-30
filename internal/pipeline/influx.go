@@ -7,10 +7,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 )
+
+type hostResolver interface {
+	LookupHost(ctx context.Context, host string) ([]string, error)
+}
 
 func escapeTag(value string) string {
 	replacer := strings.NewReplacer(
@@ -59,6 +66,13 @@ type InfluxWriter struct {
 	config Config
 	client *http.Client
 	url    string
+
+	host     string
+	port     string
+	resolver hostResolver
+
+	mu       sync.RWMutex
+	cachedIP string
 }
 
 func NewInfluxWriter(config Config) (*InfluxWriter, error) {
@@ -77,8 +91,30 @@ func NewInfluxWriter(config Config) (*InfluxWriter, error) {
 	query.Set("precision", "ns")
 	parsed.RawQuery = query.Encode()
 	url := parsed.String()
-	client := &http.Client{Timeout: config.InfluxTimeout}
-	return &InfluxWriter{config: config, client: client, url: url}, nil
+	port := parsed.Port()
+	if port == "" {
+		port = defaultPort(parsed.Scheme)
+	}
+	if port == "" {
+		return nil, fmt.Errorf("influx URL missing port: %s", config.InfluxURL)
+	}
+
+	writer := &InfluxWriter{
+		config:   config,
+		url:      url,
+		host:     parsed.Hostname(),
+		port:     port,
+		resolver: net.DefaultResolver,
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	dialer := &net.Dialer{Timeout: config.InfluxTimeout}
+	transport.DialContext = writer.dialContext(dialer)
+	writer.client = &http.Client{
+		Timeout:   config.InfluxTimeout,
+		Transport: transport,
+	}
+	return writer, nil
 }
 
 func (w *InfluxWriter) SendLines(ctx context.Context, lines []string) error {
@@ -102,4 +138,78 @@ func (w *InfluxWriter) SendLines(ctx context.Context, lines []string) error {
 		return fmt.Errorf("influx write failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+func (w *InfluxWriter) dialContext(dialer *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			host = w.host
+			port = w.port
+		}
+		ip, err := w.resolveIP(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		if port == "" {
+			port = w.port
+		}
+		target := net.JoinHostPort(ip, port)
+		return dialer.DialContext(ctx, network, target)
+	}
+}
+
+func (w *InfluxWriter) resolveIP(ctx context.Context, host string) (string, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		w.setCachedIP(host)
+		return host, nil
+	}
+	resolver := w.resolver
+	if resolver == nil {
+		resolver = net.DefaultResolver
+	}
+	ips, err := resolver.LookupHost(ctx, host)
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if cached := w.getCachedIP(); cached != "" {
+			log.Printf("using cached InfluxDB IP %s for host %s after DNS error: %v", cached, host, err)
+			return cached, nil
+		}
+		return "", err
+	}
+	if len(ips) == 0 {
+		if cached := w.getCachedIP(); cached != "" {
+			log.Printf("using cached InfluxDB IP %s for host %s: DNS returned no results", cached, host)
+			return cached, nil
+		}
+		return "", fmt.Errorf("no IPs resolved for %s", host)
+	}
+	ip := ips[0]
+	w.setCachedIP(ip)
+	return ip, nil
+}
+
+func (w *InfluxWriter) getCachedIP() string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.cachedIP
+}
+
+func (w *InfluxWriter) setCachedIP(ip string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.cachedIP = ip
+}
+
+func defaultPort(scheme string) string {
+	switch strings.ToLower(scheme) {
+	case "http":
+		return "80"
+	case "https":
+		return "443"
+	default:
+		return ""
+	}
 }

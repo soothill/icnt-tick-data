@@ -10,3 +10,4 @@ bin/
 *.db
 config/*.env
 config/*.env.local
+.gocache/

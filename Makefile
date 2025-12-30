@@ -51,30 +51,30 @@ reload: ## Reload the user systemd daemon
 	$(SYSTEMCTL) daemon-reload
 
 enable: install ## Enable the container services for the current user (ensures units installed)
-	$(SYSTEMCTL) enable container-influxdb.service
-	$(SYSTEMCTL) enable container-icnt-tick-data.service
+	$(SYSTEMCTL) enable influxdb.service
+	$(SYSTEMCTL) enable icnt-tick-data.service
 
 start: ## Start the container services
-	$(SYSTEMCTL) start container-influxdb.service
-	$(SYSTEMCTL) start container-icnt-tick-data.service
+	$(SYSTEMCTL) start influxdb.service
+	$(SYSTEMCTL) start icnt-tick-data.service
 
 stop: ## Stop the container services
-	-$(SYSTEMCTL) stop container-icnt-tick-data.service
-	-$(SYSTEMCTL) stop container-influxdb.service
+	-$(SYSTEMCTL) stop icnt-tick-data.service
+	-$(SYSTEMCTL) stop influxdb.service
 
 restart: ## Restart the container services
-	$(SYSTEMCTL) restart container-icnt-tick-data.service
-	$(SYSTEMCTL) restart container-influxdb.service
+	$(SYSTEMCTL) restart icnt-tick-data.service
+	$(SYSTEMCTL) restart influxdb.service
 
 status: ## Show status for the tick data service
-	$(SYSTEMCTL) status container-icnt-tick-data.service
+	$(SYSTEMCTL) status icnt-tick-data.service
 
 logs: ## Show status (with logs) for both services
-	$(SYSTEMCTL) status container-icnt-tick-data.service --no-pager
-	$(SYSTEMCTL) status container-influxdb.service --no-pager
+	$(SYSTEMCTL) status icnt-tick-data.service --no-pager
+	$(SYSTEMCTL) status influxdb.service --no-pager
 
 logs-tail: ## Tail logs for both services
-	journalctl --user -u container-icnt-tick-data.service -u container-influxdb.service -f
+	journalctl --user -u icnt-tick-data.service -u influxdb.service -f
 
 test: ## Run Go tests inside a Podman container
 	podman run --rm -v $(PWD):/src:Z -w /src $(TEST_IMAGE) go test ./...

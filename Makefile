@@ -39,9 +39,6 @@ install-config: ## Copy example env files to the local config directory if missi
 	if [ ! -f $(CONFIG_DIR)/icnt-tick-data.env ]; then \
 		cp config/icnt-tick-data.env.example $(CONFIG_DIR)/icnt-tick-data.env; \
 	fi
-	if [ ! -f $(CONFIG_DIR)/influxdb.env ]; then \
-		cp config/influxdb.env.example $(CONFIG_DIR)/influxdb.env; \
-	fi
 
 install-units: ## Install Quadlet unit files into the user systemd directory
 	mkdir -p $(QUADLET_DIR)

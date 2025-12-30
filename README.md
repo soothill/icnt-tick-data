@@ -45,10 +45,9 @@ make build
 make install
 ```
 
-3) Edit real config files (outside repo):
+3) Edit the real config file (outside repo):
 
-- `~/.config/icnt-tick-data/icnt-tick-data.env`
-- `~/.config/icnt-tick-data/influxdb.env`
+- `~/.config/icnt-tick-data/icnt-tick-data.env` (includes pipeline and InfluxDB init settings)
 
 4) Enable and start containers:
 
@@ -78,17 +77,14 @@ make test
 
 ## Configuration
 
-Pipeline env (`icnt-tick-data.env`):
+Pipeline + Influx setup (`icnt-tick-data.env`):
 
 - `KRAKEN_PAIR` (default `ICNT/USD`)
 - `KRAKEN_REST_PAIR` (default `ICNTUSD`)
 - `CACHE_DB_PATH` (default `/data/ticks.sqlite` in container)
 - `INFLUX_URL`, `INFLUX_ORG`, `INFLUX_BUCKET`, `INFLUX_TOKEN`
 - `FLUSH_INTERVAL_SEC`, `BACKFILL_INTERVAL_SEC`, `AGGREGATE_INTERVAL_SEC`, `BATCH_SIZE`
-
-Influx setup env (`influxdb.env`):
-
-- `DOCKER_INFLUXDB_INIT_*` values for initial org/bucket/token setup
+- `DOCKER_INFLUXDB_INIT_*` values for initial InfluxDB org/bucket/token setup
 
 ## Security Notes
 

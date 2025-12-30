@@ -90,43 +90,58 @@ tidy: ## Sync module dependencies
 	fi
 
 check-connectivity: ## Verify connectivity to InfluxDB and Kraken endpoints using current config
-	@if [ -f $(ENV_FILE) ]; then set -a; source $(ENV_FILE); set +a; fi; \
-	INFLUX_DISABLED=$${INFLUX_DISABLED:-0}; \
-	INFLUX_URL=$${INFLUX_URL:-http://localhost:8086}; \
-	KRAKEN_REST_URL=$${KRAKEN_REST_URL:-https://api.kraken.com/0/public/Trades}; \
-	KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR:-$${KRAKEN_PAIR:-ICNT/USD}}; \
-	KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR//[\/-]/}; \
-	KRAKEN_WS_URL=$${KRAKEN_WS_URL:-wss://ws.kraken.com}; \
-	KRAKEN_WS_HOST=$$(printf "%s" "$$KRAKEN_WS_URL" | sed -E 's#^[a-zA-Z]+://([^/:]+).*$#\\1#'); \
-	KRAKEN_WS_PORT=$$(printf "%s" "$$KRAKEN_WS_URL" | sed -nE 's#^[a-zA-Z]+://[^/:]+:([0-9]+).*$#\\1#p'); \
-	if [ -z "$$KRAKEN_WS_PORT" ]; then \
-		if printf "%s" "$$KRAKEN_WS_URL" | grep -qi '^wss://'; then KRAKEN_WS_PORT=443; else KRAKEN_WS_PORT=80; fi; \
-	fi; \
-	fail=0; \
-	if printf "%s" "$$INFLUX_DISABLED" | grep -qi '^\(1\|true\|yes\)$'; then \
-		echo "[skip] InfluxDB checks disabled by INFLUX_DISABLED"; \
-	else \
-		echo "Checking InfluxDB health at $$INFLUX_URL/health"; \
-		if curl -fsS --max-time 5 "$$INFLUX_URL/health" >/dev/null; then \
-			echo "[ok] InfluxDB health"; \
-		else \
-			echo "[fail] InfluxDB health"; fail=1; \
-		fi; \
-	fi; \
-	echo "Checking Kraken REST at $$KRAKEN_REST_URL?pair=$$KRAKEN_REST_PAIR"; \
-	if curl -fsS --max-time 8 "$$KRAKEN_REST_URL?pair=$$KRAKEN_REST_PAIR" >/dev/null; then \
-		echo "[ok] Kraken REST"; \
-	else \
-		echo "[fail] Kraken REST"; fail=1; \
-	fi; \
-	echo "Checking Kraken WS TCP $$KRAKEN_WS_HOST:$$KRAKEN_WS_PORT"; \
-	WS_PROBE="cat </dev/null >/dev/tcp/$$KRAKEN_WS_HOST/$$KRAKEN_WS_PORT"; \
-	if timeout 5 bash -c "$$WS_PROBE" >/dev/null 2>&1; then \
-		echo "[ok] Kraken WS TCP reachable"; \
-	else \
-		echo "[fail] Kraken WS TCP reachable"; fail=1; \
-	fi; \
-	exit $$fail
+	@if [ -f $(ENV_FILE) ]; then set -a; . $(ENV_FILE); set +a; fi; \
+	export INFLUX_DISABLED=$${INFLUX_DISABLED:-0}; \
+	export INFLUX_URL=$${INFLUX_URL:-http://localhost:8086}; \
+	export KRAKEN_REST_URL=$${KRAKEN_REST_URL:-https://api.kraken.com/0/public/Trades}; \
+	export KRAKEN_REST_PAIR=$${KRAKEN_REST_PAIR:-$${KRAKEN_PAIR:-ICNT/USD}}; \
+	export KRAKEN_WS_URL=$${KRAKEN_WS_URL:-wss://ws.kraken.com}; \
+	bash -s <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+
+ws_url="${KRAKEN_WS_URL:-wss://ws.kraken.com}"
+ws_host="$(printf "%s" "$ws_url" | sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#')"
+ws_port="$(printf "%s" "$ws_url" | sed -nE 's#^[a-zA-Z]+://[^/:]+:([0-9]+).*#\1#p')"
+if [ -z "$ws_port" ]; then
+	case "$ws_url" in
+		wss://*|https://*) ws_port=443 ;;
+		*) ws_port=80 ;;
+	esac
+fi
+
+fail=0
+if printf "%s" "${INFLUX_DISABLED}" | grep -qi '^\(1\|true\|yes\)$'; then
+	echo "[skip] InfluxDB checks disabled by INFLUX_DISABLED"
+else
+	echo "Checking InfluxDB health at ${INFLUX_URL}/health"
+	if curl -fsS --max-time 5 "${INFLUX_URL}/health" >/dev/null; then
+		echo "[ok] InfluxDB health"
+	else
+		echo "[fail] InfluxDB health"
+		fail=1
+	fi
+fi
+
+rest_pair="$(printf "%s" "${KRAKEN_REST_PAIR}" | tr -d '/-')"
+echo "Checking Kraken REST at ${KRAKEN_REST_URL}?pair=${rest_pair}"
+if curl -fsS --max-time 8 "${KRAKEN_REST_URL}?pair=${rest_pair}" >/dev/null; then
+	echo "[ok] Kraken REST"
+else
+	echo "[fail] Kraken REST"
+	fail=1
+fi
+
+echo "Checking Kraken WS TCP ${ws_host}:${ws_port}"
+if timeout 5 bash -c "exec 3<>/dev/tcp/${ws_host}/${ws_port}" >/dev/null 2>&1; then
+	echo "[ok] Kraken WS TCP reachable"
+else
+	echo "[fail] Kraken WS TCP reachable"
+	fail=1
+fi
+
+exit "$fail"
+EOS
 
 clean: ## Remove the built image
 	podman image rm -f $(IMAGE_NAME)

@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/soothill/icnt-tick-data/internal/pipeline"
@@ -14,7 +15,7 @@ import (
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
-			pipeline.LogFailuref("pipeline panic: %v", r)
+			pipeline.LogFailuref("pipeline panic: %v\n%s", r, debug.Stack())
 			os.Exit(1)
 		}
 	}()

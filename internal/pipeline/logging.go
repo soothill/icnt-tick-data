@@ -14,6 +14,12 @@ var (
 	syslogWriter *syslog.Writer
 )
 
+// resettable for tests; not exported to avoid misuse.
+func resetSyslogWriter() {
+	syslogOnce = sync.Once{}
+	syslogWriter = nil
+}
+
 // LogInfof records informational events and mirrors them to syslog to make startup/shutdown visible.
 func LogInfof(format string, args ...interface{}) {
 	logInfof(format, args...)
@@ -27,14 +33,18 @@ func LogFailuref(format string, args ...interface{}) {
 func logInfof(format string, args ...interface{}) {
 	log.Printf(format, args...)
 	if writer := getSyslogWriter(); writer != nil {
-		_ = writer.Info(fmt.Sprintf(format, args...))
+		if err := writer.Info(fmt.Sprintf(format, args...)); err != nil {
+			resetSyslogWriter()
+		}
 	}
 }
 
 func logFailuref(format string, args ...interface{}) {
 	log.Printf(format, args...)
 	if writer := getSyslogWriter(); writer != nil {
-		_ = writer.Err(fmt.Sprintf(format, args...))
+		if err := writer.Err(fmt.Sprintf(format, args...)); err != nil {
+			resetSyslogWriter()
+		}
 	}
 }
 

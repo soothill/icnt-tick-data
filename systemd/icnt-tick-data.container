@@ -2,6 +2,8 @@
 
 [Unit]
 Description=ICNT tick data pipeline (Kraken to InfluxDB)
+Wants=network-online.target
+After=network-online.target
 
 [Container]
 Image=localhost/icnt-tick-data:latest
@@ -10,10 +12,16 @@ UserNS=keep-id
 User=%U
 EnvironmentFile=%h/.config/icnt-tick-data/icnt-tick-data.env
 Volume=%h/.local/share/icnt-tick-data:/data:Z
-Network=icnt-tick-data
+# Use the host network so the container can reach Tailscale routes and use the host's DNS resolver.
+# Note: with host networking, container DNS names like "http://influxdb:8086" won't resolve; prefer localhost/IP/FQDN.
+Network=host
 
 [Service]
 Restart=always
+# If INFLUX_URL uses Tailscale MagicDNS (or any hostname that isn't resolvable during early boot),
+# wait for the hostname to resolve before starting the container.
+# Optional: set TAILSCALE_DNS_WAIT_SEC in the env file to override the default (90s).
+ExecStartPre=/usr/bin/bash -lc 'set -euo pipefail; case "${INFLUX_DISABLED:-0}" in 1|true|TRUE|yes|YES) exit 0;; esac; url="${INFLUX_URL:-}"; [ -n "$url" ] || exit 0; host="$(printf "%s" "$url" | sed -E "s#^[a-zA-Z][a-zA-Z0-9+.-]*://\\[([^\\]]+)\\].*#\\1#; t; s#^[a-zA-Z][a-zA-Z0-9+.-]*://([^/:]+).*#\\1#")"; [ -n "$host" ] || exit 0; case "$host" in localhost) exit 0;; esac; if printf "%s" "$host" | grep -Eq "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"; then exit 0; fi; wait="${TAILSCALE_DNS_WAIT_SEC:-90}"; for ((i=1; i<=wait; i++)); do if getent ahosts "$host" >/dev/null 2>&1; then exit 0; fi; sleep 1; done; echo "timed out waiting for DNS for Influx host $host (INFLUX_URL=$url)" >&2; exit 1'
 
 [Install]
 WantedBy=default.target

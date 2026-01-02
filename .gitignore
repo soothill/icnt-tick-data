@@ -11,3 +11,4 @@ bin/
 config/*.env
 config/*.env.local
 .gocache/
+.cache/

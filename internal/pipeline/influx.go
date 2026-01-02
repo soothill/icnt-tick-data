@@ -83,6 +83,9 @@ func NewInfluxWriter(config Config) (*InfluxWriter, error) {
 	if err != nil {
 		return nil, err
 	}
+	if host := parsed.Hostname(); host != "" && host != "localhost" && net.ParseIP(host) == nil && !strings.Contains(host, ".") {
+		logFailuref("warning: INFLUX_URL host %q looks like a short name; prefer localhost, an IP, or a fully-qualified hostname", host)
+	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/api/v2/write"
 	query := parsed.Query()
 	query.Set("org", config.InfluxOrg)
@@ -131,7 +134,7 @@ func (w *InfluxWriter) SendLines(ctx context.Context, lines []string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return fmt.Errorf("influx write failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -176,7 +179,7 @@ func (w *InfluxWriter) resolveIP(ctx context.Context, host string) (string, erro
 			logFailuref("using cached InfluxDB IP %s for host %s after DNS error: %v", cached, host, err)
 			return cached, nil
 		}
-		return "", err
+		return "", fmt.Errorf("dns lookup failed for InfluxDB host %q (set INFLUX_URL to localhost, an IP, or an FQDN): %w", host, err)
 	}
 	if len(ips) == 0 {
 		if cached := w.getCachedIP(); cached != "" {

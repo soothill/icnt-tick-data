@@ -2,7 +2,7 @@
 
 # ICNT Tick Data Pipeline
 
-This repository collects ICNT/USD tick data from Kraken Pro’s public trade feed, caches it locally, aggregates minute bars, and reliably ships both raw ticks and minute summaries to InfluxDB. It is designed for openSUSE MicroOS using Podman + systemd (Quadlet) and assumes InfluxDB is provided remotely (no local Influx container is deployed here).
+This repository collects ICNT/USD tick data from Kraken Pro’s public trade feed, caches it locally, aggregates minute bars, and reliably ships both raw ticks and minute summaries to a remote InfluxDB.
 
 ## Features
 
@@ -47,7 +47,7 @@ make install
 
 3) Edit the real config file (outside repo):
 
-- `~/.config/icnt-tick-data/icnt-tick-data.env` (includes pipeline and InfluxDB init settings)
+- `~/.config/icnt-tick-data/icnt-tick-data.env` (pipeline + InfluxDB connection settings)
 
 4) Enable and start the pipeline:
 
@@ -84,7 +84,10 @@ Pipeline + Influx setup (`icnt-tick-data.env`):
 - `CACHE_DB_PATH` (default `/data/ticks.sqlite` in container)
 - `INFLUX_URL`, `INFLUX_ORG`, `INFLUX_BUCKET`, `INFLUX_TOKEN`
 - `FLUSH_INTERVAL_SEC`, `BACKFILL_INTERVAL_SEC`, `AGGREGATE_INTERVAL_SEC`, `BATCH_SIZE`
-- `DOCKER_INFLUXDB_INIT_*` values for initial InfluxDB org/bucket/token setup
+
+If your InfluxDB is reached over Tailscale, prefer setting `INFLUX_URL` to a stable Tailscale IP (avoids DNS issues in containers). If you use MagicDNS hostnames, ensure the container’s DNS can resolve your tailnet names (or restart the service after Tailscale comes up post-boot).
+If you run the pipeline container with host networking (`Network=host` in the Quadlet unit), container-to-container DNS names like `http://influxdb:8086` will not resolve; use `http://localhost:8086`, an IP, or a fully-qualified hostname instead.
+If you do use a Tailscale/MagicDNS hostname for `INFLUX_URL`, the Quadlet unit includes an `ExecStartPre` check that waits (default 90s) for the hostname to resolve before starting the container; override with `TAILSCALE_DNS_WAIT_SEC` in `~/.config/icnt-tick-data/icnt-tick-data.env`.
 
 ## Security Notes
 
